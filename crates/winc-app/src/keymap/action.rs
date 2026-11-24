@@ -174,6 +174,18 @@ pub enum Action {
     SortLinesAscending,
     SortLinesDescending,
     TrimTrailingWhitespace,
+    /// 删除重复的行，保留第一次出现的。
+    RemoveDuplicateLines,
+    /// 删除重复的行，保留最后一次出现的。
+    RemoveDuplicateLinesKeepLast,
+    /// 删除空行和只含空白的行。
+    RemoveEmptyLines,
+    /// 移除换行符，把文字并成一行。
+    RemoveLineBreaks,
+    /// 移除空格和制表符。
+    RemoveSpaces,
+    /// 移除全部空白字符，包括换行符。
+    RemoveWhitespace,
     /// 把 `\uXXXX` 转义换成字符，或把 ASCII 以外的字符写成转义；没有选区时转换整个文件。
     UnescapeUnicode,
     EscapeUnicode,
@@ -550,6 +562,12 @@ impl Action {
             SortLinesAscending => t!("cmd-sort-lines-ascending"),
             SortLinesDescending => t!("cmd-sort-lines-descending"),
             TrimTrailingWhitespace => t!("cmd-trim-trailing-whitespace"),
+            RemoveDuplicateLines => t!("cmd-remove-duplicate-lines"),
+            RemoveDuplicateLinesKeepLast => t!("cmd-remove-duplicate-lines-keep-last"),
+            RemoveEmptyLines => t!("cmd-remove-empty-lines"),
+            RemoveLineBreaks => t!("cmd-remove-line-breaks"),
+            RemoveSpaces => t!("cmd-remove-spaces"),
+            RemoveWhitespace => t!("cmd-remove-whitespace"),
             UnescapeUnicode => t!("cmd-unescape-unicode"),
             EscapeUnicode => t!("cmd-escape-unicode"),
             IndentUsingSpaces => t!("cmd-indent-using-spaces"),
@@ -825,6 +843,12 @@ impl Action {
             | SortLinesAscending
             | SortLinesDescending
             | TrimTrailingWhitespace
+            | RemoveDuplicateLines
+            | RemoveDuplicateLinesKeepLast
+            | RemoveEmptyLines
+            | RemoveLineBreaks
+            | RemoveSpaces
+            | RemoveWhitespace
             | UnescapeUnicode
             | EscapeUnicode
             | IndentUsingSpaces

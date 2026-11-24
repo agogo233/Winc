@@ -316,6 +316,16 @@ impl App {
             SortLinesAscending => editing(self, Command::SortLines { descending: false }),
             SortLinesDescending => editing(self, Command::SortLines { descending: true }),
             TrimTrailingWhitespace => editing(self, Command::TrimTrailingWhitespace),
+            RemoveDuplicateLines => {
+                editing(self, Command::RemoveDuplicateLines { keep_last: false })
+            }
+            RemoveDuplicateLinesKeepLast => {
+                editing(self, Command::RemoveDuplicateLines { keep_last: true })
+            }
+            RemoveEmptyLines => editing(self, Command::RemoveEmptyLines),
+            RemoveLineBreaks => editing(self, Command::RemoveLineBreaks),
+            RemoveSpaces => editing(self, Command::RemoveSpaces),
+            RemoveWhitespace => editing(self, Command::RemoveWhitespace),
             UnescapeUnicode | EscapeUnicode => {
                 // 所有选区都是空的才转换整个文件，否则只转换选中的部分。
                 let whole = (self.editor.active())
