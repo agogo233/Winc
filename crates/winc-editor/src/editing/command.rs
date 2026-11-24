@@ -145,6 +145,19 @@ pub enum Command {
     JoinLines,
     /// 删除整个文件中每行行尾的空白。
     TrimTrailingWhitespace,
+    /// 删除重复的行：内容完全相同的行只保留第一次（`keep_last` 为真时是最后一次）出现的。
+    RemoveDuplicateLines {
+        /// 是否保留最后一次出现的行。
+        keep_last: bool,
+    },
+    /// 删除空行和只含空白的行。
+    RemoveEmptyLines,
+    /// 移除选区（没有选区时是整个文件）中的换行符，多行文字并成一行。
+    RemoveLineBreaks,
+    /// 移除选区（没有选区时是整个文件）中的空格和制表符。
+    RemoveSpaces,
+    /// 移除选区（没有选区时是整个文件）中的空白字符，包括换行符。
+    RemoveWhitespace,
     /// 把 `\uXXXX` 转义换成对应的字符：`whole` 为真时（所有选区都是空的）转换整个文件，否则只
     /// 转换各个选区。
     UnescapeUnicode {
@@ -516,6 +529,13 @@ impl Document {
             &Command::SortLines { descending } => transform::sort_lines(text, sel, descending),
             Command::JoinLines => transform::join_lines(text, sel),
             Command::TrimTrailingWhitespace => transform::trim_trailing_whitespace(text, sel),
+            &Command::RemoveDuplicateLines { keep_last } => {
+                transform::remove_duplicate_lines(text, sel, keep_last)
+            }
+            Command::RemoveEmptyLines => transform::remove_empty_lines(text, sel),
+            Command::RemoveLineBreaks => transform::remove_line_breaks(text, sel),
+            Command::RemoveSpaces => transform::remove_spaces(text, sel),
+            Command::RemoveWhitespace => transform::remove_whitespace(text, sel),
             // 只转换选区时，空的选区不转换（否则会转换整个文件）。
             &Command::UnescapeUnicode { whole } if whole || !sel.is_empty() => {
                 transform::unescape_unicode(text, sel)

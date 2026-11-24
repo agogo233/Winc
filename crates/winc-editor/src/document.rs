@@ -1022,8 +1022,13 @@ impl Document {
         let whole_file = match command {
             Command::TrimTrailingWhitespace => true,
             &Command::UnescapeUnicode { whole } | &Command::EscapeUnicode { whole } => whole,
-            Command::SortLines { .. } => {
+            Command::SortLines { .. }
+            | Command::RemoveDuplicateLines { .. }
+            | Command::RemoveEmptyLines => {
                 winc_core::transform::sorts_whole_file(&self.text, self.selection)
+            }
+            Command::RemoveLineBreaks | Command::RemoveSpaces | Command::RemoveWhitespace => {
+                self.selection.is_empty()
             }
             _ => false,
         };
