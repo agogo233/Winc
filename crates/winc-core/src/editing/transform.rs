@@ -3,6 +3,8 @@
 //!
 //! 每个命令只生成 [`Transaction`]，不直接修改文本。
 
+use std::collections::HashSet;
+
 use crate::editing::edit::{Change, EditKind, Transaction, selected_lines, shift_selection};
 use crate::editing::movement;
 use crate::editing::selection::Selection;
@@ -371,6 +373,147 @@ pub fn change_line_endings(
     }
     let after = shift_selection(selection, &changes);
     Some(Transaction::new(changes, selection, after, EditKind::Other))
+}
+
+/// 返回按行整理（去重、删除空行）处理的行范围（起止行号，含两端）。
+///
+/// 与排序相同：选区覆盖多行时取这些行，否则取整个文件。文件以换行符结尾时，末尾的空行是
+/// 换行符产生的假行，不参加整理。
+fn content_line_range(text: &impl Lines, selection: Selection) -> (usize, usize) {
+    let (first, mut last) = lines_to_sort(text, selection);
+    if last > first && last + 1 == text.line_count() && text.line_len(last) == 0 {
+        last -= 1;
+    }
+    (first, last)
+}
+
+/// 把 `removed` 中标记为要删除的行（从第 `first` 行起）删掉，生成一个撤销单元。
+///
+/// 每个被删除的行连同它的换行符一起删掉，保留的行和各自的换行符都留在原处。没有行可删时
+/// 返回 `None`。光标落在被删除的位置上。
+fn remove_lines_transaction(
+    text: &impl Lines,
+    selection: Selection,
+    first: usize,
+    removed: &[bool],
+) -> Option<Transaction> {
+    let mut changes = Vec::new();
+    let mut shift: isize = 0;
+    for (i, &is_removed) in removed.iter().enumerate() {
+        if !is_removed {
+            continue;
+        }
+        let span = text.line_span(first + i);
+        if span.end == span.start {
+            continue;
+        }
+        changes.push(Change {
+            start: span.start.saturating_add_signed(shift),
+            removed: text.substring(span.start, span.end),
+            inserted: String::new(),
+        });
+        shift -= (span.end - span.start) as isize;
+    }
+    if changes.is_empty() {
+        return None;
+    }
+    let after = shift_selection(selection, &changes);
+    Some(Transaction::new(changes, selection, after, EditKind::Other))
+}
+
+/// 返回删除重复行的事务；没有重复的行时返回 `None`。
+///
+/// 行的内容（不含换行符）完全一致才算重复，区分大小写，也不忽略行首行尾的空白。选区覆盖多行时
+/// 只整理这些行，否则整理整个文件。`keep_last` 为假时保留重复的行中第一次出现的，为真时保留
+/// 最后一次出现的；保留的行相对顺序不变，各自的换行符保持原样。
+pub fn remove_duplicate_lines(
+    text: &impl Lines,
+    selection: Selection,
+    keep_last: bool,
+) -> Option<Transaction> {
+    let (first, last) = content_line_range(text, selection);
+    let lines: Vec<String> = (first..=last)
+        .map(|l| text.line_content(l).slice().to_string())
+        .collect();
+    // 从保留的方向扫描，见过的行一律删除；`keep_last` 时倒着扫，再按原顺序删除。
+    let mut seen: HashSet<&str> = HashSet::with_capacity(lines.len());
+    let mut removed = vec![false; lines.len()];
+    if keep_last {
+        for i in (0..lines.len()).rev() {
+            if !seen.insert(lines[i].as_str()) {
+                removed[i] = true;
+            }
+        }
+    } else {
+        for i in 0..lines.len() {
+            if !seen.insert(lines[i].as_str()) {
+                removed[i] = true;
+            }
+        }
+    }
+    remove_lines_transaction(text, selection, first, &removed)
+}
+
+/// 返回删除空行的事务；没有空行时返回 `None`。
+///
+/// 行首行尾全是空白字符的行也算空行。选区覆盖多行时只整理这些行，否则整理整个文件。
+pub fn remove_empty_lines(text: &impl Lines, selection: Selection) -> Option<Transaction> {
+    let (first, last) = content_line_range(text, selection);
+    let removed: Vec<bool> = (first..=last)
+        .map(|l| text.line_content(l).slice().chars().all(char::is_whitespace))
+        .collect();
+    remove_lines_transaction(text, selection, first, &removed)
+}
+
+/// 返回移除选区（没有选区时是整个文件）中符合 `keep` 之外字符的事务。
+///
+/// 只删除 `keep` 为假的字符，没有可删的字符时返回 `None`。选区随文本调整。
+fn remove_chars_where(
+    text: &impl Lines,
+    selection: Selection,
+    keep: impl Fn(char) -> bool,
+) -> Option<Transaction> {
+    let (from, to) = if selection.is_empty() {
+        (0, text.end_pos())
+    } else {
+        (selection.from(), selection.to())
+    };
+    let removed = text.substring(from, to);
+    let inserted: String = removed.chars().filter(|&c| keep(c)).collect();
+    // `inserted` 是 `removed` 删掉一些字符后的结果：长度不变就是没有字符被删。
+    if inserted == removed {
+        return None;
+    }
+    let changes = vec![Change {
+        start: from,
+        removed,
+        inserted,
+    }];
+    let after = shift_selection(selection, &changes);
+    Some(Transaction::new(changes, selection, after, EditKind::Other))
+}
+
+/// 返回移除换行符的事务；没有换行符可移除时返回 `None`。
+///
+/// 选区（没有选区时是整个文件）中的换行符全部移除，多行文字并成一行。`\r\n` 的两个字符一起
+/// 移除。
+pub fn remove_line_breaks(text: &impl Lines, selection: Selection) -> Option<Transaction> {
+    remove_chars_where(text, selection, |c| c != '\n' && c != '\r')
+}
+
+/// 返回移除空格和制表符的事务；没有可移除的字符时返回 `None`。
+///
+/// 选区（没有选区时是整个文件）中的空格和制表符全部移除，其他字符和换行符保留。
+pub fn remove_spaces(text: &impl Lines, selection: Selection) -> Option<Transaction> {
+    remove_chars_where(text, selection, |c| c != ' ' && c != '\t')
+}
+
+/// 返回移除空白字符的事务；没有可移除的字符时返回 `None`。
+///
+/// 选区（没有选区时是整个文件）中的空白字符全部移除，包括空格、制表符、换行符和全角空格等
+/// Unicode 空白，多行文字并成一行。
+pub fn remove_whitespace(text: &impl Lines, selection: Selection) -> Option<Transaction> {
+    remove_chars_where(text, selection, |c| !c.is_whitespace())
 }
 
 /// 查找括号时最多扫描的字符数（字符）。

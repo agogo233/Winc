@@ -480,3 +480,86 @@ fn unicode_escape_text_keeps_properties_values() {
         }
     }
 }
+
+#[test]
+fn removing_duplicate_lines_keeps_the_first_or_last_occurrence() {
+    let first = |t: &Rope, s| remove_duplicate_lines(t, s, false);
+    let last = |t: &Rope, s| remove_duplicate_lines(t, s, true);
+    // 没有选区时整理整个文件；保留第一次出现的行，末尾的换行符留在原处。
+    let (out, sel) = run("a\nb\na\nb\n", Selection::point(0), first).unwrap();
+    assert_eq!(out, "a\nb\n");
+    assert_eq!(sel, Selection::point(0));
+    // 保留最后一次出现的行，其余行的相对顺序不变。
+    let (out, _) = run("a\nb\na\n", Selection::point(0), last).unwrap();
+    assert_eq!(out, "b\na\n");
+    // 只整理选区覆盖的行；选区终点在下一行行首时该行不计入。
+    let (out, sel) = run("x\na\nb\na\ny\n", Selection::new(2, 8), first).unwrap();
+    assert_eq!(out, "x\na\nb\ny\n");
+    assert_eq!(sel, Selection::new(2, 6));
+    // CRLF 与 LF 混用时，保留的行各自带原来的换行符。
+    let (out, _) = run("a\r\nb\r\na\n", Selection::point(1), first).unwrap();
+    assert_eq!(out, "a\r\nb\r\n");
+    // 光标在被删除的行上时落到删除的位置。
+    let (out, sel) = run("a\nb\na\n", Selection::point(5), first).unwrap();
+    assert_eq!(out, "a\nb\n");
+    assert_eq!(sel, Selection::point(4));
+    // 行内容要完全一致才算重复：大小写、行首行尾的空白都算内容。
+    let (out, _) = run("a\nA\na \na\n", Selection::point(0), first).unwrap();
+    assert_eq!(out, "a\nA\na \n");
+    // 没有重复的行、只有一行时不产生事务。
+    assert!(run("a\nb\nc\n", Selection::point(0), first).is_none());
+    assert!(run("only", Selection::point(0), last).is_none());
+}
+
+#[test]
+fn removing_empty_lines_deletes_blank_lines_and_keeps_the_final_newline() {
+    let empty = |t: &Rope, s| remove_empty_lines(t, s);
+    // 中间的空行删除；文件末尾的换行符不是空行。
+    let (out, _) = run("a\n\n\nb\n", Selection::point(0), empty).unwrap();
+    assert_eq!(out, "a\nb\n");
+    // 只含空白字符的行也算空行；最后一行没有换行符时一并删到文件末尾。
+    let (out, _) = run("a\n \n\t\nb", Selection::point(0), empty).unwrap();
+    assert_eq!(out, "a\nb");
+    // 光标在被删除的空行上时落到删除的位置。
+    let (out, sel) = run("a\n\nb\n", Selection::point(2), empty).unwrap();
+    assert_eq!(out, "a\nb\n");
+    assert_eq!(sel, Selection::point(2));
+    // 没有空行时不产生事务。
+    assert!(run("a\nb\n", Selection::point(0), empty).is_none());
+    assert!(run("a\nb", Selection::point(0), empty).is_none());
+    // 整个文件都是空行时删成空文件。
+    let (out, _) = run("\n\n", Selection::point(0), empty).unwrap();
+    assert_eq!(out, "");
+}
+
+#[test]
+fn removing_line_breaks_spaces_and_whitespace_collapses_the_text() {
+    let breaks = |t: &Rope, s| remove_line_breaks(t, s);
+    // 没有选区时移除整个文件的换行符，CRLF 的两个字符一起移除。
+    let (out, sel) = run("a\r\nb\nc\n", Selection::point(0), breaks).unwrap();
+    assert_eq!(out, "abc");
+    assert_eq!(sel, Selection::point(0));
+    // 只移除选区内的换行符。
+    let (out, _) = run("a\nb\nc\n", Selection::new(0, 3), breaks).unwrap();
+    assert_eq!(out, "ab\nc\n");
+    // 没有换行符可移除时不产生事务。
+    assert!(run("ab", Selection::point(0), breaks).is_none());
+
+    let spaces = |t: &Rope, s| remove_spaces(t, s);
+    // 空格和制表符都移除，换行符保留。
+    let (out, _) = run("a b\tc\n d ", Selection::point(1), spaces).unwrap();
+    assert_eq!(out, "abc\nd");
+    // 只移除选区内的空格和制表符。
+    let (out, _) = run("a b\tc\n d ", Selection::new(0, 5), spaces).unwrap();
+    assert_eq!(out, "abc\n d ");
+    assert!(run("abc", Selection::point(0), spaces).is_none());
+
+    let all = |t: &Rope, s| remove_whitespace(t, s);
+    // 空白字符全部移除，多行文字并成一行。
+    let (out, _) = run("a b\r\nc\td ", Selection::point(0), all).unwrap();
+    assert_eq!(out, "abcd");
+    // 全角空格也是空白字符。
+    let (out, _) = run("a\u{3000}b", Selection::point(0), all).unwrap();
+    assert_eq!(out, "ab");
+    assert!(run("abc", Selection::point(0), all).is_none());
+}
