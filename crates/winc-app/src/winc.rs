@@ -959,7 +959,7 @@ impl ApplicationHandler<Envelope> for Winc {
                 let on = self
                     .windows
                     .first()
-                    .is_some_and(|slot| slot.app.config.update_auto_check != Some(false));
+                    .is_some_and(|slot| slot.app.config.update_auto_check == Some(true));
                 #[cfg(target_os = "macos")]
                 if on {
                     crate::macos::check_for_updates(false);

@@ -145,7 +145,7 @@ pub struct Config {
     /// 粘贴图片的文件名（不含扩展名），`${filename}` 表示文档主名，`${date}` 表示粘贴时刻，
     /// 未设置时为 `image`。
     pub markdown_image_name: Option<String>,
-    /// 是否定时检查更新（启动后 5 秒、之后每天一次），默认为是。
+    /// 是否定时检查更新（启动后 5 秒、之后每天一次），默认为否。
     ///
     /// 关闭后仍可从菜单「检查更新…」手动检查。
     pub update_auto_check: Option<bool>,

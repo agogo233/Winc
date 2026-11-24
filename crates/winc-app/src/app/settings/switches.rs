@@ -37,7 +37,7 @@ impl App {
             Setting::MarkdownSelectionToolbar => {
                 self.config.markdown_selection_toolbar != Some(false)
             }
-            Setting::CheckUpdates => self.config.update_auto_check != Some(false),
+            Setting::CheckUpdates => self.config.update_auto_check == Some(true),
             Setting::SystemTitleBar => self.config.ui_native_title_bar == Some(true),
             Setting::GitModule => self.git_enabled(),
             Setting::GitConfirmPush => self.config.git_confirm_push != Some(false),

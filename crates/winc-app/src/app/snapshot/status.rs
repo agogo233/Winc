@@ -251,7 +251,7 @@ fn the_folder_menu_uses_the_same_icons_as_the_file_tree() {
 }
 
 #[test]
-fn a_found_update_shows_in_the_status_bar_and_the_setting_turns_checks_off() {
+fn a_found_update_shows_in_the_status_bar_and_the_setting_turns_checks_on() {
     let dir = sample_folder("status-update");
     let mut app = app_with(&dir.join("short.rs"), false);
     paint(&mut app);
@@ -273,10 +273,10 @@ fn a_found_update_shows_in_the_status_bar_and_the_setting_turns_checks_off() {
     paint(&mut app);
     assert!(!has_update(&app));
 
-    // 定时检查默认开着，设置里可以关掉。
-    assert!(app.switch_on(Setting::CheckUpdates));
+    // 定时检查默认关着，设置里可以打开。
+    assert!(!app.switch_on(Setting::CheckUpdates));
     app.settings_toggle(Setting::CheckUpdates);
-    assert_eq!(app.config.update_auto_check, Some(false));
+    assert_eq!(app.config.update_auto_check, Some(true));
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
