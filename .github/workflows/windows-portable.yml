@@ -1,0 +1,121 @@
+# Portable Windows x64 build: compiles Winc and packages the portable bundle as one flat
+# artifact. No installer, no code signing, no update-feed signing, so no release secrets are
+# needed. Runs on every push to `dev` and on manual dispatch. The artifact keeps the portable
+# files at the root of a single zip, so it is never a zip wrapped inside another zip.
+
+name: Winc · Windows x64 Portable
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: winc-portable-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: 0
+  TARGET: x86_64-pc-windows-msvc
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - uses: ./.github/actions/build-setup
+        with:
+          target: ${{ env.TARGET }}
+          source-sha: ${{ github.sha }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
+
+      # package.ps1 reads this file and checks its version against the VERSION file. The release
+      # flow derives it from config.mjs, which requires the update-signing key; a portable build
+      # signs nothing, so only the version is needed here.
+      - name: Configure build
+        run: |
+          version="$(node release/common/version.mjs)"
+          printf '{"version":"%s"}\n' "$version" > "$RUNNER_TEMP/build-config.json"
+
+      - name: Compile
+        run: |
+          cargo build --release --locked --target "$TARGET" -p winc -p winc-pty
+          cargo xtask icons "target/$TARGET/release/bundle/icons"
+
+      # The remote server runs on Linux hosts whatever system this package is for. It is static and
+      # has no C code, so the linker bundled with Rust builds every architecture on any runner.
+      - name: Compile remote server
+        run: cargo xtask server
+
+      # The file watcher runs inside WSL distributions. It is static and has no C code, so the
+      # linker bundled with Rust is enough to build it on Windows.
+      - name: Compile WSL file watcher
+        env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: rust-lld
+        run: |
+          rustup target add x86_64-unknown-linux-musl
+          cargo build --release --locked --target x86_64-unknown-linux-musl -p winc-watch
+
+      - name: Fetch console host
+        shell: pwsh
+        run: ./release/windows/conpty.ps1 -Destination "target/$env:TARGET/release"
+
+      - name: Package portable
+        shell: pwsh
+        run: ./release/windows/package.ps1 -Phase portable -Target $env:TARGET
+
+      # upload-artifact wraps its upload in a zip of its own, so uploading the portable zip would
+      # produce a zip inside a zip. Expanding it keeps the artifact down to a single layer.
+      - name: Expand the portable package into a flat directory
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = (Get-ChildItem "target/$env:TARGET/release/bundle/portable/*-portable.zip").FullName
+          if (-not $zip) { throw 'no portable zip was produced' }
+          $flat = Join-Path $env:RUNNER_TEMP 'winc-portable-flat'
+          Expand-Archive -Path $zip -DestinationPath $flat -Force
+          Get-ChildItem -Recurse -File $flat | ForEach-Object {
+            Write-Host ("  " + $_.FullName.Substring($flat.Length + 1))
+          }
+
+      # The portable bundle must carry the whole program: the editor and terminal binaries, the
+      # console host, the WSL watcher, both remote servers, the launchers, and the license files.
+      - name: Verify no files are missing from the portable package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $flat = Join-Path $env:RUNNER_TEMP 'winc-portable-flat'
+          $required = @(
+            'winc.exe', 'winc-pty.exe', 'conpty.dll', 'OpenConsole.exe',
+            'winc-watch', 'winc-server-Linux-x86_64', 'winc-server-Linux-aarch64',
+            'bin/winc', 'bin/winc.cmd', 'data/README.txt',
+            'LICENSE', 'NOTICE', 'winc.ico'
+          )
+          $missing = @($required | Where-Object { -not (Test-Path (Join-Path $flat $_)) })
+          if ($missing.Count -gt 0) {
+            Write-Host "::error::the portable package is missing: $($missing -join ', ')"
+            exit 1
+          }
+          Write-Host "OK: all $($required.Count) required portable files are present."
+
+      - name: Upload the portable artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: winc-windows-x64-portable
+          path: ${{ runner.temp }}/winc-portable-flat
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
+          overwrite: true
