@@ -201,6 +201,8 @@ pub enum UserEvent {
     AttachFolder(PathBuf),
     /// 后台格式化已有结果。
     Formatted,
+    /// 后台发送的 `.http` 请求已有结果。
+    HttpDone,
     /// 提示框中回答了是否允许运行项目自带的格式化工具。
     ToolChoice(Box<ToolAnswer>),
     /// 确认框中同意运行参数所指的运行配置。
@@ -255,6 +257,8 @@ pub enum UserEvent {
     GitStatus,
     /// 后台已取得某个文件在 Git 中的版本，可以打开差异。
     GitContent,
+    /// 后台比较完了「未提交的更改」标签中的一段。
+    GitCombined,
     /// 后台已重新比较完一个差异标签。
     Rediffed,
     /// 后台已提取完大纲的符号。
@@ -569,6 +573,12 @@ pub enum Hover {
     SplitDivider,
     /// 编辑区窗格之间的第几道分隔线（拖动可调整两侧的大小）。
     PaneDivider(usize),
+    /// 拆分的终端标签中第几条分隔线（见 `App::terminal_split_at`）。
+    TerminalSplit(usize),
+    /// 终端分栏之间第几条分隔线（见 `App::terminal_group_split_at`）。
+    TerminalGroupSplit(usize),
+    /// 「未提交的更改」标签上的段头、按钮。
+    Combined(git::combined::CombinedHit),
     /// 终端面板标签栏上的标签、关闭按钮、「+」和位置按钮。
     TerminalHeader(terminal::HeaderHit),
     /// 终端中命令块的色带与吸顶的命令行。
@@ -598,6 +608,8 @@ pub enum Hover {
     Gutter,
     /// 已折叠行末尾的 `⋯`，参数是行号（从 0 起）。
     Folded(usize),
+    /// `.http` 文件行号栏中发送请求的按钮，参数是请求行的行号（从 0 起）。
+    HttpRun(usize),
     /// 超长行截断说明中的「显示整行」，参数是行号（从 0 起）。
     LongLine(usize),
     /// 滚动条的可点击区域。
@@ -632,6 +644,7 @@ impl Hover {
                     terminal::HeaderHit::Position
                         | terminal::HeaderHit::SearchDialog
                         | terminal::HeaderHit::Maximize
+                        | terminal::HeaderHit::Split
                         | terminal::HeaderHit::ShellMenu
                         | terminal::HeaderHit::Find(_)
                         | terminal::HeaderHit::Hide
@@ -681,6 +694,15 @@ impl Hover {
                 )
                 | Hover::Blame(_)
                 | Hover::PickerPart(PickerPart::Pull | PickerPart::Push | PickerPart::Fetch)
+                | Hover::Combined(
+                    git::combined::CombinedHit::OpenFile(_)
+                        | git::combined::CombinedHit::OpenDiff(_)
+                        | git::combined::CombinedHit::Previous
+                        | git::combined::CombinedHit::Next
+                        | git::combined::CombinedHit::Collapse
+                        | git::combined::CombinedHit::Layout
+                        | git::combined::CombinedHit::View
+                )
                 | Hover::Commit(
                     CommitTarget::Log
                         | CommitTarget::Sync
@@ -700,7 +722,8 @@ impl Hover {
                         | CommitTarget::DirStage(..)
                 )
                 | Hover::Diff(
-                    DiffTarget::Previous
+                    DiffTarget::Combined
+                        | DiffTarget::Previous
                         | DiffTarget::Next
                         | DiffTarget::PreviousFile
                         | DiffTarget::NextFile
@@ -764,6 +787,13 @@ enum Drag {
     AddSelect {
         origin: usize,
     },
+    /// 在选中的文字上按下（见 `App::press_on_selection`）：`press` 是按下处的窗口坐标，`at` 是
+    /// 没有拖动就松开时放置光标的位置（字符偏移），`moving` 表示已越过阈值、正在拖动文字。
+    MoveText {
+        press: (f32, f32),
+        at: usize,
+        moving: bool,
+    },
     Splitter {
         start_x: f32,
         start_width: f32,
@@ -805,6 +835,14 @@ enum Drag {
     },
     /// 拖动编辑区窗格之间的第 `index` 道分隔线。
     PaneDivider {
+        index: usize,
+    },
+    /// 拖动拆分的终端标签中的第 `index` 条分隔线（见 `App::drag_terminal_split`）。
+    TerminalSplit {
+        index: usize,
+    },
+    /// 拖动终端分栏之间的第 `index` 条分隔线（见 `App::drag_terminal_group_split`）。
+    TerminalGroupSplit {
         index: usize,
     },
     /// 拖动日志标签中列表与详情之间的分隔线：按下时的横坐标、详情栏当时的宽度。
@@ -965,6 +1003,8 @@ pub struct App {
     pub layout: Layout,
     /// 标签栏的标签和滚动状态。
     pub tabs: TabBar,
+    /// 按最近使用切换标签页的列表和记录。
+    pub(crate) tab_switch: workspace::tab_switch::TabSwitch,
     /// 编辑区的各个窗格在界面上的位置和状态。
     pub(crate) panes: workspace::panes::PaneUi,
     /// 差异视图的界面状态。
@@ -1031,6 +1071,8 @@ pub struct App {
 
     /// 保存时格式化和修复的状态。
     pub format: FormatState,
+    /// `.http` 请求文件中正在发送的请求和各文档的请求行。
+    pub(crate) http: editor::http::HttpState,
     /// Git 模块：仓库状态、文件树装饰，以及提交、日志、追溯、分支、合并各视图的状态。
     ///
     /// 模块关闭时为空。
@@ -1158,6 +1200,7 @@ impl App {
         match done {
             UserEvent::GitStatus => self.poll_git(),
             UserEvent::GitContent => self.poll_git_content(),
+            UserEvent::GitCombined => self.poll_combined(),
             UserEvent::GitCommit => self.poll_commit(),
             UserEvent::GitBase => self.poll_bases(),
             UserEvent::GitOperated => self.poll_branch_ops(),
@@ -1213,8 +1256,8 @@ impl App {
     ///
     /// 目标是带提示的按钮时记录悬停开始的时刻，悬停足够久后才显示提示。
     pub(super) fn set_hover(&mut self, hover: Hover) {
-        // 窗口内的菜单覆盖在上方时，下方的部件均不视为悬停（`hover_at` 同样如此）。
-        let hover = if self.popup().is_some() {
+        // 窗口内的提示框或菜单覆盖在上方时，下方的部件均不视为悬停（`hover_at` 同样如此）。
+        let hover = if self.modal_open() {
             Hover::None
         } else {
             hover
@@ -1256,6 +1299,7 @@ impl App {
     fn drop_drags(&mut self) {
         self.cancel_tree_drag();
         self.cancel_tab_drag();
+        self.cancel_terminal_tab_drag();
         self.pointer.drag = Drag::None;
         self.pointer.close_pressed = None;
         self.pointer.control_pressed = None;
