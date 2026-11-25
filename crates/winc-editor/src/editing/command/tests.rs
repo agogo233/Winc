@@ -184,6 +184,39 @@ fn wraps_selection() {
     d.selection = Selection::new(0, 3);
     type_str(&mut d, "*");
     assert_eq!(text(&d), "*");
+
+    // 单引号在非字符串定界语言（Rust）中也包住选区；无选区时仍不补全。
+    let mut d = doc("a.rs", "abc", 0);
+    d.selection = Selection::new(0, 3);
+    d.execute(Command::Insert("'".into()), 10, 4);
+    assert_eq!(text(&d), "'abc'");
+    assert_eq!(d.selection, Selection::new(1, 4));
+
+    // 反引号在非模板字符串语言（Python）中也包住选区。
+    let mut d = doc("a.py", "abc", 0);
+    d.selection = Selection::new(0, 3);
+    d.execute(Command::Insert("`".into()), 10, 4);
+    assert_eq!(text(&d), "`abc`");
+    assert_eq!(d.selection, Selection::new(1, 4));
+
+    // 中文括号在非 Markdown 语言中也包住选区。
+    let mut d = doc("a.rs", "abc", 0);
+    d.selection = Selection::new(0, 3);
+    d.execute(Command::Insert("（".into()), 10, 4);
+    assert_eq!(text(&d), "（abc）");
+    assert_eq!(d.selection, Selection::new(1, 4));
+
+    // 纯空白的选区不包，直接替换。
+    let mut d = doc("a.rs", "   ", 0);
+    d.selection = Selection::new(0, 3);
+    d.execute(Command::Insert("'".into()), 10, 4);
+    assert_eq!(text(&d), "'");
+
+    // 在一个引号上再敲同种引号不包，直接替换。
+    let mut d = doc("a.rs", "'", 0);
+    d.selection = Selection::new(0, 1);
+    d.execute(Command::Insert("'".into()), 10, 4);
+    assert_eq!(text(&d), "'");
 }
 
 #[test]

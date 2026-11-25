@@ -596,6 +596,17 @@ fn insert(text: &impl Lines, sel: Selection, s: &str, language: &Language) -> Tr
     let prev = sel.from().checked_sub(1).and_then(|pos| text.char_at(pos));
     let wrapping = !sel.is_empty();
 
+    // 纯空白的选区不包：选中空白后敲引号或括号，直接替换更符合直觉。
+    if wrapping && text.substring(sel.from(), sel.to()).chars().all(char::is_whitespace) {
+        return edit::replace_selection(text, sel, s, kind);
+    }
+    // 在一个引号上再敲同种引号不包：退化为替换，避免叠成两个引号。
+    if wrapping && matches!(c, '"' | '\'' | '`') && sel.to() == sel.from() + 1
+        && text.char_at(sel.from()) == Some(c)
+    {
+        return edit::replace_selection(text, sel, s, kind);
+    }
+
     let skips = matches!(c, ')' | ']' | '}' | '"' | '\'' | '`')
         || (language.markdown && CJK_PAIRS.iter().any(|p| p.1 == c));
     if !wrapping && skips && next == Some(c) {
@@ -612,13 +623,15 @@ fn insert(text: &impl Lines, sel: Selection, s: &str, language: &Language) -> Tr
         '(' => Some(')'),
         '[' => Some(']'),
         '{' => Some('}'),
-        // 单引号不是字符串定界符的语言（如 Rust），单引号多用于生命周期，不补全。
-        '\'' if !language.single_quote_string => None,
-        '`' if !language.backtick_string => None,
+        // 单引号不是字符串定界符的语言（如 Rust），单引号多用于生命周期：无选区打字时不补全；
+        // 有选区时是用户明确要包裹，仍然包住选区。
+        '\'' if !language.single_quote_string && !wrapping => None,
+        '`' if !language.backtick_string && !wrapping => None,
         // 紧跟在单词之后的引号多用作撇号（如 don't），不补全；紧跟在同种引号之后时通常是在
         // 输入连续引号（```、"""），同样不补全。
         '"' | '\'' | '`' => (wrapping || !follows_word_or_quote(prev, c)).then_some(c),
-        _ if language.markdown && cjk_close.is_some() => cjk_close,
+        // 中文括号和引号在 Markdown 中自动补全；其他语言中有选区时也包住选区。
+        _ if (language.markdown || wrapping) && cjk_close.is_some() => cjk_close,
         _ if wrapping && language.surround.contains(&c) => Some(c),
         _ => None,
     };
