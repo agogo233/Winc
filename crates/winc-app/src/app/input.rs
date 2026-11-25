@@ -6,6 +6,7 @@ use super::*;
 
 pub(super) mod actions;
 pub(super) mod context_menu;
+pub(super) mod generate;
 pub(super) mod keyboard;
 pub(super) mod mouse;
 pub(super) mod palette;

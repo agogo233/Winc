@@ -9,6 +9,7 @@ use winc_preview::markdown::paragraph::Kind;
 use winit::keyboard::NamedKey;
 
 use super::*;
+use super::generate;
 use crate::field::TextField;
 use crate::keymap::{Action, Context};
 use crate::layout::{PanelButton, SearchButton, SettingsPage, SidebarView};
@@ -313,6 +314,10 @@ impl App {
             TransformToUppercase => editing(self, Command::ChangeCase(Case::Upper)),
             TransformToLowercase => editing(self, Command::ChangeCase(Case::Lower)),
             TransformToTitlecase => editing(self, Command::ChangeCase(Case::Title)),
+            GeneratePassword => editing(self, Command::Paste(generate::password())),
+            GenerateSecurePassword => editing(self, Command::Paste(generate::secure_password())),
+            GenerateHex => editing(self, Command::Paste(generate::hex())),
+            GenerateUsername => editing(self, Command::Paste(generate::username())),
             SortLinesAscending => editing(self, Command::SortLines { descending: false }),
             SortLinesDescending => editing(self, Command::SortLines { descending: true }),
             TrimTrailingWhitespace => editing(self, Command::TrimTrailingWhitespace),

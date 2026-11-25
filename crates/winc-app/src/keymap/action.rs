@@ -171,6 +171,14 @@ pub enum Action {
     TransformToUppercase,
     TransformToLowercase,
     TransformToTitlecase,
+    /// 生成 16 位的密码，字符取自字母和数字。
+    GeneratePassword,
+    /// 生成 16 位的安全密码，在字母和数字之外再加符号。
+    GenerateSecurePassword,
+    /// 生成 32 个十六进制字符。
+    GenerateHex,
+    /// 生成用户名：名的首字母、姓，再加三位数字。
+    GenerateUsername,
     SortLinesAscending,
     SortLinesDescending,
     TrimTrailingWhitespace,
@@ -559,6 +567,10 @@ impl Action {
             TransformToUppercase => t!("cmd-transform-to-uppercase"),
             TransformToLowercase => t!("cmd-transform-to-lowercase"),
             TransformToTitlecase => t!("cmd-transform-to-titlecase"),
+            GeneratePassword => t!("cmd-generate-password"),
+            GenerateSecurePassword => t!("cmd-generate-secure-password"),
+            GenerateHex => t!("cmd-generate-hex"),
+            GenerateUsername => t!("cmd-generate-username"),
             SortLinesAscending => t!("cmd-sort-lines-ascending"),
             SortLinesDescending => t!("cmd-sort-lines-descending"),
             TrimTrailingWhitespace => t!("cmd-trim-trailing-whitespace"),
@@ -840,6 +852,10 @@ impl Action {
             | TransformToUppercase
             | TransformToLowercase
             | TransformToTitlecase
+            | GeneratePassword
+            | GenerateSecurePassword
+            | GenerateHex
+            | GenerateUsername
             | SortLinesAscending
             | SortLinesDescending
             | TrimTrailingWhitespace

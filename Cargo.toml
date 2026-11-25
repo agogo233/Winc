@@ -37,6 +37,8 @@ winit = "0.30"
 swash = "0.2"
 memmap2 = "0.9"
 memchr = "2"
+# 生成密码、十六进制串、用户名等命令的随机数；`thread_rng` 需要 `std_rng` 的 ChaCha12。
+rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
 # Windows API，各 crate 共用一个版本（与 `softbuffer` 相同）。
 windows-sys = "0.59"
 # 只开 Unicode 大小写和 \w \d \s，不带 \p{..} 的 Unicode 属性表，二进制小约 250 KB。
