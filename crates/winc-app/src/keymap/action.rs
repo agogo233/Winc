@@ -24,6 +24,8 @@ pub enum Action {
     GoBack,
     GoForward,
     Settings,
+    ExportSettings,
+    ImportSettings,
     ReleaseNotes,
     KeyboardShortcuts,
     RecordKeys,
@@ -79,6 +81,7 @@ pub enum Action {
     CopyActivePath,
     CopyKeyPath,
     RevealActiveFile,
+    RevealActiveInTree,
     OpenInTerminal,
     Quit,
 
@@ -239,6 +242,10 @@ pub enum Action {
     Format,
     FormatSelection,
     Fix,
+    /// 把当前文档（有选区时是选中部分）与剪贴板中的文字比较。
+    CompareWithClipboard,
+    /// 把当前文档与磁盘上已保存的版本比较。
+    CompareWithSaved,
 
     Find,
     Replace,
@@ -332,6 +339,7 @@ pub enum Action {
     GitInit,
     /// 打开提交视图并展开位置选择器。
     GitSwitchRepository,
+    GitAddRepository,
     GitSwitchWorktree,
     GitNewWorktree,
     /// 展开分支选择器（提交视图里从分支行，否则从状态栏）。
@@ -391,6 +399,10 @@ pub enum Action {
     SplitTerminal,
     /// 终端：把正在看的标签移到正在用的一栏后面新加的一栏（见 `App::move_terminal_to_new_group`）。
     MoveTerminalToGroup,
+    /// 把当前终端标签移到编辑区，保留运行中的程序。
+    MoveTerminalToEditor,
+    /// 把编辑区中的终端标签移回终端面板。
+    MoveTerminalToPanel,
     NextTerminalPane,
     PreviousTerminalPane,
     FocusTerminal1,
@@ -487,6 +499,8 @@ impl Action {
             GoBack => t!("cmd-go-back"),
             GoForward => t!("cmd-go-forward"),
             Settings => t!("cmd-settings"),
+            ExportSettings => t!("cmd-export-settings"),
+            ImportSettings => t!("cmd-import-settings"),
             ReleaseNotes => t!("cmd-release-notes"),
             KeyboardShortcuts => t!("cmd-keyboard-shortcuts"),
             RecordKeys => t!("cmd-record-keys"),
@@ -543,6 +557,7 @@ impl Action {
                     t!("cmd-reveal-active-file-in-folder")
                 }
             }
+            RevealActiveInTree => t!("cmd-reveal-active-file-in-tree"),
             Quit => t!("cmd-quit"),
             Undo => t!("cmd-undo"),
             Redo => t!("cmd-redo"),
@@ -661,6 +676,8 @@ impl Action {
             Format => t!("cmd-format"),
             FormatSelection => t!("cmd-format-selection"),
             Fix => t!("cmd-fix"),
+            CompareWithClipboard => t!("cmd-compare-with-clipboard"),
+            CompareWithSaved => t!("cmd-compare-with-saved"),
             Find => t!("cmd-find"),
             Replace => t!("cmd-replace"),
             FindNext => t!("cmd-find-next"),
@@ -726,6 +743,7 @@ impl Action {
             GitClone => t!("cmd-git-clone"),
             GitInit => t!("cmd-git-init"),
             GitSwitchRepository => t!("cmd-git-switch-repository"),
+            GitAddRepository => t!("cmd-git-add-repository"),
             GitSwitchWorktree => t!("cmd-git-switch-worktree"),
             GitNewWorktree => t!("cmd-git-new-worktree"),
             GitSwitchBranch => t!("cmd-git-switch-branch"),
@@ -762,6 +780,8 @@ impl Action {
             PreviousTerminal => t!("cmd-previous-terminal"),
             SplitTerminal => t!("cmd-split-terminal"),
             MoveTerminalToGroup => t!("cmd-move-terminal-to-group"),
+            MoveTerminalToEditor => t!("cmd-move-terminal-to-editor"),
+            MoveTerminalToPanel => t!("cmd-move-terminal-to-panel"),
             NextTerminalPane => t!("cmd-next-terminal-pane"),
             PreviousTerminalPane => t!("cmd-previous-terminal-pane"),
             FocusTerminal1 => t!("cmd-terminal-1"),
@@ -822,6 +842,8 @@ impl Action {
             | GoBack
             | GoForward
             | Settings
+            | ExportSettings
+            | ImportSettings
             | ReleaseNotes
             | KeyboardShortcuts
             | RecordKeys
@@ -833,7 +855,7 @@ impl Action {
             | FocusTab3 | FocusTab4 | FocusTab5 | FocusTab6 | FocusTab7 | FocusTab8 | FocusTab9
             | SwitchTab | SwitchTabBack | CloseFolder | CloseWindow | CopyPath
             | CopyRelativePath | RevealInFinder | CopyActivePath | CopyKeyPath
-            | RevealActiveFile | OpenInTerminal | Quit => Group::File,
+            | RevealActiveFile | RevealActiveInTree | OpenInTerminal | Quit => Group::File,
             NewWindow | OpenRecent | CopyReference | CopyAbsoluteReference => Group::File,
             Undo
             | Redo
@@ -951,7 +973,9 @@ impl Action {
             | ClearBookmarks
             | Format
             | FormatSelection
-            | Fix => Group::Edit,
+            | Fix
+            | CompareWithClipboard
+            | CompareWithSaved => Group::Edit,
             Find | Replace | FindNext | FindPrevious | HighlightWord | ClearWordHighlights
             | ReplaceOne | ReplaceAll | SelectAllMatches | ToggleCase | ToggleWord
             | ToggleRegex | FilterLines | FindInFiles | OpenSearchDialog | ReplaceInFiles
@@ -1005,6 +1029,7 @@ impl Action {
             | GitClone
             | GitInit
             | GitSwitchRepository
+            | GitAddRepository
             | GitSwitchWorktree
             | GitNewWorktree
             | GitSwitchBranch
@@ -1041,6 +1066,8 @@ impl Action {
             | PreviousTerminal
             | SplitTerminal
             | MoveTerminalToGroup
+            | MoveTerminalToEditor
+            | MoveTerminalToPanel
             | NextTerminalPane
             | PreviousTerminalPane
             | FocusTerminal1
@@ -1118,10 +1145,9 @@ impl Action {
 
     /// 光标在差异标签右侧时，是否把命令交给右侧对应的源文档执行。
     ///
-    /// 「编辑」分组的命令默认都交给右侧，新加的编辑命令在差异里也能直接用；另外加上保存和「选中全部
-    /// 匹配」。等同于方向键、删除键的命令照真的按键处理，不在此列。排除的还有不改动文字、只作用于编
-    /// 辑器视图或文件设置的命令：滚到中间、折叠与书签只对普通编辑器的视图有意义；缩进方式、缩进
-    /// 转换、检测缩进、换行符和语言模式改的是整份文件的设置，不在差异里执行。
+    /// 「编辑」分组的命令默认交给右侧，另加保存和「选中全部匹配」。不交的有：等同于方向键、删除键
+    /// 的命令（照真的按键处理），只作用于视图的滚到中间、折叠与书签，改整份文件设置的缩进、换行符
+    /// 和语言模式命令，以及另开差异的比较命令。
     pub fn edits_in_diff(self) -> bool {
         use Action::*;
         match self {
@@ -1152,6 +1178,8 @@ impl Action {
             | DetectIndentation
             | ChangeEndOfLine
             | ChangeLanguageMode
+            | CompareWithClipboard
+            | CompareWithSaved
             | CursorLeft
             | CursorRight
             | CursorUp
@@ -1216,6 +1244,7 @@ impl Action {
             | Action::GitClone
             | Action::GitInit
             | Action::GitSwitchRepository
+            | Action::GitAddRepository
             | Action::GitSwitchWorktree
             | Action::GitNewWorktree
             | Action::GitSwitchBranch
@@ -1250,6 +1279,8 @@ impl Action {
             | Action::PreviousTerminal
             | Action::SplitTerminal
             | Action::MoveTerminalToGroup
+            | Action::MoveTerminalToEditor
+            | Action::MoveTerminalToPanel
             | Action::NextTerminalPane
             | Action::PreviousTerminalPane
             | Action::FocusTerminal1

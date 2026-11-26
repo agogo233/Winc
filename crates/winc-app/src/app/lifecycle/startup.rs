@@ -102,6 +102,7 @@ impl App {
             caches: crate::app::editor::EditorCaches {
                 sticky_cache: None,
                 wraps: Arc::default(),
+                compares: Default::default(),
                 line_tokens: Default::default(),
                 minimap_rows: Default::default(),
                 max_scroll_x: None,
@@ -147,6 +148,7 @@ impl App {
                     ..Default::default()
                 },
                 file_hover: None,
+                dragged_in: None,
                 name_input: None,
                 global: GlobalSearch::default(),
                 outline: OutlineState::default(),
