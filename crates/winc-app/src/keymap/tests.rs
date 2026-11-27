@@ -635,6 +635,8 @@ fn edits_in_diff_matches_the_diff_command_list() {
         RemoveWhitespace,
         UnescapeUnicode,
         EscapeUnicode,
+        PrettyPrintJson,
+        MinifyJson,
         Format,
         FormatSelection,
         Fix,

@@ -213,6 +213,11 @@ pub enum Action {
     /// 把 `\uXXXX` 转义换成字符，或把 ASCII 以外的字符写成转义；没有选区时转换整个文件。
     UnescapeUnicode,
     EscapeUnicode,
+    /// 美化 JSON：转换选区；没有选区时转换整个文件（文件是一个 JSON 值时），
+    /// 或光标所在行中包住光标的 JSON。
+    PrettyPrintJson,
+    /// 压缩 JSON，转换的范围同 [`Action::PrettyPrintJson`]。
+    MinifyJson,
     IndentUsingSpaces,
     IndentUsingTabs,
     ConvertIndentationToSpaces,
@@ -333,6 +338,8 @@ pub enum Action {
     GitGoToParentCommit,
     /// 在只读标签中打开 Git 操作的输出。
     GitShowOutput,
+    /// 用设置的模型生成提交信息；正在生成时取消。
+    GitGenerateCommitMessage,
     /// 克隆仓库。
     GitClone,
     /// 在当前目录中初始化仓库。
@@ -393,6 +400,8 @@ pub enum Action {
     /// 把剪贴板粘贴到终端（见 `App::terminal_paste`）。
     TerminalPaste,
     NewTerminal,
+    /// 在当前编辑器窗格新建终端，不打开终端面板（见 `App::new_editor_terminal`）。
+    NewEditorTerminal,
     CloseTerminal,
     NextTerminal,
     PreviousTerminal,
@@ -647,6 +656,8 @@ impl Action {
             RemoveWhitespace => t!("cmd-remove-whitespace"),
             UnescapeUnicode => t!("cmd-unescape-unicode"),
             EscapeUnicode => t!("cmd-escape-unicode"),
+            PrettyPrintJson => t!("cmd-pretty-print-json"),
+            MinifyJson => t!("cmd-minify-json"),
             IndentUsingSpaces => t!("cmd-indent-using-spaces"),
             IndentUsingTabs => t!("cmd-indent-using-tabs"),
             ConvertIndentationToSpaces => t!("cmd-convert-indentation-to-spaces"),
@@ -740,6 +751,7 @@ impl Action {
             GitGoToChildCommit => t!("cmd-git-go-to-child-commit"),
             GitGoToParentCommit => t!("cmd-git-go-to-parent-commit"),
             GitShowOutput => t!("cmd-git-show-output"),
+            GitGenerateCommitMessage => t!("cmd-git-generate-commit-message"),
             GitClone => t!("cmd-git-clone"),
             GitInit => t!("cmd-git-init"),
             GitSwitchRepository => t!("cmd-git-switch-repository"),
@@ -775,6 +787,7 @@ impl Action {
             TerminalCopy => t!("cmd-terminal-copy"),
             TerminalPaste => t!("cmd-terminal-paste"),
             NewTerminal => t!("cmd-new-terminal"),
+            NewEditorTerminal => t!("cmd-new-editor-terminal"),
             CloseTerminal => t!("cmd-close-terminal"),
             NextTerminal => t!("cmd-next-terminal"),
             PreviousTerminal => t!("cmd-previous-terminal"),
@@ -945,6 +958,8 @@ impl Action {
             | RemoveWhitespace
             | UnescapeUnicode
             | EscapeUnicode
+            | PrettyPrintJson
+            | MinifyJson
             | IndentUsingSpaces
             | IndentUsingTabs
             | ConvertIndentationToSpaces
@@ -1026,6 +1041,7 @@ impl Action {
             | GitGoToChildCommit
             | GitGoToParentCommit
             | GitShowOutput
+            | GitGenerateCommitMessage
             | GitClone
             | GitInit
             | GitSwitchRepository
@@ -1061,6 +1077,7 @@ impl Action {
             | TerminalCopy
             | TerminalPaste
             | NewTerminal
+            | NewEditorTerminal
             | CloseTerminal
             | NextTerminal
             | PreviousTerminal
@@ -1241,6 +1258,7 @@ impl Action {
             | Action::GitGoToChildCommit
             | Action::GitGoToParentCommit
             | Action::GitShowOutput
+            | Action::GitGenerateCommitMessage
             | Action::GitClone
             | Action::GitInit
             | Action::GitSwitchRepository
@@ -1274,6 +1292,7 @@ impl Action {
             | Action::TerminalCopy
             | Action::TerminalPaste
             | Action::NewTerminal
+            | Action::NewEditorTerminal
             | Action::CloseTerminal
             | Action::NextTerminal
             | Action::PreviousTerminal
